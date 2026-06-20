@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from app.core.database import get_supabase
 from app.core.dependencies import get_current_user, get_hotel_id, require_roles
 from app.schemas.reserva import (
@@ -53,6 +53,7 @@ async def crear_reserva(
 ):
     huespedes_adicionales = data.huespedes_adicionales or []
     base_data = data.model_dump(exclude={"huespedes_adicionales"})
+    base_data["codigo_reserva"] = f"RES-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{data.huesped_id[:6]}"
     result = supabase.table("reservas").insert(base_data).execute()
     reserva = result.data[0]
 

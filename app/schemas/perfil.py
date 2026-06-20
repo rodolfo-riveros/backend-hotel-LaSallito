@@ -13,7 +13,6 @@ class PerfilBase(BaseModel):
 
 class PerfilCreate(PerfilBase):
     id: str
-    email: Optional[str] = None
 
 
 class PerfilUpdate(BaseModel):

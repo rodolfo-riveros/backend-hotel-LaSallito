@@ -98,7 +98,31 @@ async def crear_movimiento(
     _=Depends(require_roles("recepcionista", "administrador")),
 ):
     data.folio_id = folio_id
-    result = supabase.table("folio_movimientos").insert(data.model_dump()).execute()
+    insert_data = data.model_dump()
+
+    if data.concepto_id:
+        concepto = supabase.table("conceptos_cargo").select("afecto_igv").eq("id", data.concepto_id).execute()
+        afecto_igv = concepto.data[0]["afecto_igv"] if concepto.data else True
+    else:
+        afecto_igv = True
+
+    igv_pct = 0.18
+    service_pct = 0.00
+
+    if afecto_igv:
+        base = data.monto_total / (1 + igv_pct + service_pct)
+        monto_igv = base * igv_pct
+        monto_servicio = base * service_pct
+    else:
+        base = data.monto_total
+        monto_igv = 0.00
+        monto_servicio = 0.00
+
+    insert_data["monto_base"] = round(base, 2)
+    insert_data["monto_igv"] = round(monto_igv, 2)
+    insert_data["monto_servicio"] = round(monto_servicio, 2)
+
+    result = supabase.table("folio_movimientos").insert(insert_data).execute()
     return result.data[0]
 
 

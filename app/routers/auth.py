@@ -50,15 +50,15 @@ async def register(
             "email_confirm": True,
         })
         user_id = auth_result.user.id
-        perfil_data = PerfilCreate(
-            id=user_id,
-            email=data.email,
-            nombre_completo=data.nombre_completo,
-            rol=data.rol,
-            hotel_id=data.hotel_id,
-            codigo_estudiante=data.codigo_estudiante,
-        )
-        result = supabase.table("perfiles").insert(perfil_data.model_dump()).execute()
+        insert_data = {
+            "id": user_id,
+            "nombre_completo": data.nombre_completo,
+            "rol": data.rol,
+            "hotel_id": data.hotel_id,
+            "codigo_estudiante": data.codigo_estudiante,
+            "activo": True,
+        }
+        result = supabase.table("perfiles").insert(insert_data).execute()
         return result.data[0]
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
