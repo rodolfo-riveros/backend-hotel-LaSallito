@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
-from typing import List
+from typing import List, Optional
+import traceback
 from app.core.database import get_supabase
 from app.core.dependencies import get_current_user, get_hotel_id, require_roles
 from app.services.sunat_simulator import emitir_comprobante as emitir_sunat
@@ -11,7 +12,20 @@ from app.schemas.folio import (
     ComprobanteCreate, ComprobanteResponse,
 )
 
+
+def calcular_totales_folio(supabase: Client, folio_id: str):
+    movimientos = supabase.table("folio_movimientos").select("*").eq("folio_id", folio_id).eq("anulado", False).execute()
+    saldo = 0
+    for mov in movimientos.data:
+        if mov["tipo"] == "cargo":
+            saldo += mov["monto_total"]
+        else:
+            saldo -= mov["monto_total"]
+    supabase.table("folios").update({"saldo": saldo}).eq("id", folio_id).execute()
+
+
 router = APIRouter(prefix="/folios", tags=["Folio y Facturación"])
+
 
 
 # === FOLIOS ===
@@ -19,14 +33,27 @@ router = APIRouter(prefix="/folios", tags=["Folio y Facturación"])
 @router.get("/", response_model=List[FolioResponse])
 async def listar_folios(
     hotel_id: str = Depends(get_hotel_id),
-    abiertos: bool = True,
+    estadia_id: Optional[str] = None,
+    abiertos: Optional[bool] = None,
     supabase: Client = Depends(get_supabase),
     _=Depends(get_current_user),
 ):
     query = supabase.table("folios").select("*").eq("hotel_id", hotel_id)
-    if abiertos:
-        query = query.eq("abierto", True)
+    if estadia_id:
+        query = query.eq("estadia_id", estadia_id)
+    if abiertos is not None:
+        query = query.eq("abierto", abiertos)
     result = query.execute()
+    return result.data
+
+
+@router.get("/comprobantes", response_model=List[ComprobanteResponse])
+async def listar_comprobantes(
+    hotel_id: str = Depends(get_hotel_id),
+    supabase: Client = Depends(get_supabase),
+    _=Depends(get_current_user),
+):
+    result = supabase.table("comprobantes").select("*").eq("hotel_id", hotel_id).order("emitido_en", desc=True).execute()
     return result.data
 
 
@@ -97,33 +124,51 @@ async def crear_movimiento(
     supabase: Client = Depends(get_supabase),
     _=Depends(require_roles("recepcionista", "administrador")),
 ):
-    data.folio_id = folio_id
-    insert_data = data.model_dump()
+    try:
+        insert_data = data.model_dump(exclude_none=True)
+        insert_data["folio_id"] = folio_id
 
-    if data.concepto_id:
-        concepto = supabase.table("conceptos_cargo").select("afecto_igv").eq("id", data.concepto_id).execute()
-        afecto_igv = concepto.data[0]["afecto_igv"] if concepto.data else True
-    else:
-        afecto_igv = True
+        # Defaults para cantidad y precio_unitario
+        insert_data.setdefault("cantidad", 1)
+        insert_data.setdefault("precio_unitario", 0)
 
-    igv_pct = 0.18
-    service_pct = 0.00
+        if data.concepto_id:
+            concepto = supabase.table("conceptos_cargo").select("afecto_igv").eq("id", data.concepto_id).execute()
+            afecto_igv = concepto.data[0]["afecto_igv"] if concepto.data else True
+        else:
+            afecto_igv = data.tipo == "cargo"
 
-    if afecto_igv:
-        base = data.monto_total / (1 + igv_pct + service_pct)
-        monto_igv = base * igv_pct
-        monto_servicio = base * service_pct
-    else:
-        base = data.monto_total
-        monto_igv = 0.00
-        monto_servicio = 0.00
+        igv_pct = 0.18
+        service_pct = 0.00
 
-    insert_data["monto_base"] = round(base, 2)
-    insert_data["monto_igv"] = round(monto_igv, 2)
-    insert_data["monto_servicio"] = round(monto_servicio, 2)
+        monto = insert_data.get("monto_total", 0) or 0
 
-    result = supabase.table("folio_movimientos").insert(insert_data).execute()
-    return result.data[0]
+        if afecto_igv and monto > 0:
+            base = monto / (1 + igv_pct + service_pct)
+            monto_igv = base * igv_pct
+            monto_servicio = base * service_pct
+        else:
+            base = monto
+            monto_igv = 0.00
+            monto_servicio = 0.00
+
+        insert_data["monto_base"] = round(base, 2)
+        insert_data["monto_igv"] = round(monto_igv, 2)
+        insert_data["monto_servicio"] = round(monto_servicio, 2)
+
+        result = supabase.table("folio_movimientos").insert(insert_data).execute()
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Error al crear el movimiento")
+
+        # Recalcular saldo del folio
+        calcular_totales_folio(supabase, folio_id)
+
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
 @router.put("/movimientos/{movimiento_id}/anular", response_model=FolioMovimientoResponse)

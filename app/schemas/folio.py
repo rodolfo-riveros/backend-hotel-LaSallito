@@ -57,15 +57,15 @@ class FolioMovimientoResponse(BaseModel):
     tipo: str
     concepto_id: Optional[str] = None
     descripcion: Optional[str] = None
-    cantidad: float
-    precio_unitario: float
-    monto_base: float
-    monto_igv: float
-    monto_servicio: float
-    monto_total: float
+    cantidad: float = 1
+    precio_unitario: float = 0
+    monto_base: float = 0
+    monto_igv: float = 0
+    monto_servicio: float = 0
+    monto_total: float = 0
     metodo_pago: Optional[str] = None
     producto_id: Optional[str] = None
-    anulado: bool
+    anulado: bool = False
     motivo_anulacion: Optional[str] = None
     usuario_id: Optional[str] = None
     creado_en: datetime

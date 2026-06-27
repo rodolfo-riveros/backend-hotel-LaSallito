@@ -25,6 +25,8 @@ async def listar_huespedes(
     return result.data
 
 
+
+
 @router.get("/{huesped_id}", response_model=HuespedResponse)
 async def obtener_huesped(
     huesped_id: str,
@@ -44,7 +46,7 @@ async def crear_huesped(
     supabase: Client = Depends(get_supabase),
     _=Depends(require_roles("recepcionista", "supervisor", "administrador")),
 ):
-    result = supabase.table("huespedes").insert(data.model_dump()).execute()
+    result = supabase.table("huespedes").insert(data.model_dump(mode='json')).execute()
     return result.data[0]
 
 
@@ -55,7 +57,7 @@ async def actualizar_huesped(
     supabase: Client = Depends(get_supabase),
     _=Depends(require_roles("recepcionista", "supervisor", "administrador")),
 ):
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    update_data = {k: v for k, v in data.model_dump(mode='json').items() if v is not None}
     result = supabase.table("huespedes").update(update_data).eq("id", huesped_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Huésped no encontrado")

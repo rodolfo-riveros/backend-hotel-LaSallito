@@ -52,7 +52,7 @@ async def crear_reserva(
     _=Depends(require_roles("recepcionista", "supervisor", "administrador")),
 ):
     huespedes_adicionales = data.huespedes_adicionales or []
-    base_data = data.model_dump(exclude={"huespedes_adicionales"})
+    base_data = data.model_dump(exclude={"huespedes_adicionales"}, mode='json')
     base_data["codigo_reserva"] = f"RES-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{data.huesped_id[:6]}"
     result = supabase.table("reservas").insert(base_data).execute()
     reserva = result.data[0]
@@ -73,7 +73,7 @@ async def actualizar_reserva(
     supabase: Client = Depends(get_supabase),
     _=Depends(require_roles("recepcionista", "supervisor", "administrador")),
 ):
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    update_data = {k: v for k, v in data.model_dump(mode='json').items() if v is not None}
     result = supabase.table("reservas").update(update_data).eq("id", reserva_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Reserva no encontrada")
@@ -103,5 +103,5 @@ async def agregar_huesped_adicional(
     supabase: Client = Depends(get_supabase),
     _=Depends(get_current_user),
 ):
-    result = supabase.table("reserva_huespedes_adicionales").insert(data.model_dump()).execute()
+    result = supabase.table("reserva_huespedes_adicionales").insert(data.model_dump(mode='json')).execute()
     return result.data[0]
